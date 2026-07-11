@@ -66,6 +66,9 @@ const axisDefs = [
       运行中 {{ exp.completed }}/{{ exp.total }}
     </div>
     <div v-else-if="exp.cancelled" class="progress">已取消（{{ exp.completed }}/{{ exp.total }} 完成）</div>
+    <div v-else-if="exp.sparseDone" class="progress hint-strong">
+      稀疏组已完成（角点+中心，共 {{ exp.total }} 个）。灰色「待补齐」格子尚未运行——先取消明显不合适的参数值，再点「补齐完整矩阵」。
+    </div>
     <div v-if="exp.error" class="error">{{ exp.error }}</div>
   </div>
 </template>
@@ -127,6 +130,11 @@ button.danger {
   margin-top: 8px;
   color: var(--text-dim);
   font-size: 13px;
+}
+
+.hint-strong {
+  color: var(--accent);
+  line-height: 1.5;
 }
 
 .error {

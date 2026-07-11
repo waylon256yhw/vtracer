@@ -5,8 +5,11 @@ defineProps<{ cell: CandidateCell | null }>()
 </script>
 
 <template>
-  <div class="card" :class="cell?.status">
-    <template v-if="!cell || cell.status === 'pending'">
+  <div class="card" :class="cell?.status ?? 'not-run'">
+    <template v-if="!cell">
+      <div class="not-run">待补齐</div>
+    </template>
+    <template v-else-if="cell.status === 'pending'">
       <div class="spinner" />
     </template>
     <template v-else-if="cell.status === 'error'">
@@ -46,6 +49,21 @@ defineProps<{ cell: CandidateCell | null }>()
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+
+.card.not-run {
+  border-style: dashed;
+  opacity: 0.5;
+  cursor: default;
+}
+
+.card.not-run:hover {
+  border-color: var(--border);
+}
+
+.not-run {
+  color: var(--text-dim);
+  font-size: 12px;
 }
 
 .spinner {
