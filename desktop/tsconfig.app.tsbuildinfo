@@ -1,0 +1,1 @@
+{"root":["./src/main.ts","./src/api/index.ts","./src/api/mock.ts","./src/api/tauri.ts","./src/api/types.ts","./src/stores/image.ts","./src/App.vue","./src/components/RoiSelector.vue","./src/views/ExperimentView.vue"],"version":"5.9.3"}

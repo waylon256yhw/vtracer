@@ -3,5 +3,12 @@
 members = [
     "cmdapp",
     "webapp",
+    "studio-core",
+    "desktop/src-tauri",
+]
+default-members = [
+    "cmdapp",
+    "webapp",
+    "studio-core",
 ]
 resolver = "2"

@@ -1,0 +1,21 @@
+[package]
+name = "vtracer-studio"
+version = "0.1.0"
+edition = "2021"
+description = "VTracer Studio desktop app (Tauri shell)."
+license = "MIT"
+publish = false
+
+[lib]
+name = "vtracer_studio_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+studio-core = { path = "../../studio-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

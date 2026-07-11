@@ -1,0 +1,18 @@
+[package]
+name = "studio-core"
+version = "0.1.0"
+edition = "2021"
+description = "Headless core logic for VTracer Studio (param matrix, recipes, thumbnails)."
+license = "MIT"
+publish = false
+
+[dependencies]
+vtracer = { path = "../cmdapp" }
+visioncortex = "0.8.8"
+image = "0.25"
+resvg = "0.47"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+blake3 = "1.8"
+crossbeam-channel = "0.5"
+thiserror = "2"
