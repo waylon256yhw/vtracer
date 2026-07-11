@@ -319,3 +319,89 @@ fn clear_dir(dir: &std::path::Path) {
         }
     }
 }
+
+#[derive(Debug, Serialize)]
+pub struct FullResult {
+    pub result_id: u64,
+    pub svg_path: String,
+    pub metrics: Metrics,
+}
+
+/// Convert the FULL original image with the given config. Slow (seconds to
+/// minutes on large photos); runs on a blocking thread with an indeterminate
+/// progress UI (vtracer::convert has no progress callback). The SVG is kept
+/// on disk so export can copy the exact bytes.
+#[tauri::command]
+pub async fn render_full(
+    config: StudioConfig,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<FullResult, String> {
+    let image = state.image_handle().ok_or("请先打开图片")?;
+    config.validate().map_err(|e| e.to_string())?;
+
+    let dir = cache_dir(&app)?;
+    let result_id = state.next_result_id.fetch_add(1, Ordering::SeqCst) + 1;
+    let render_config = config.clone();
+    let (svg_text, metrics) = tauri::async_runtime::spawn_blocking(move || {
+        studio_core::render_full(&image, &render_config)
+    })
+    .await
+    .map_err(|e| format!("后台任务失败：{e}"))??;
+
+    let svg_path = dir.join(format!("full-{result_id}.svg"));
+    std::fs::write(&svg_path, &svg_text).map_err(|e| format!("无法写入 SVG：{e}"))?;
+
+    let record = Arc::new(crate::state::FullRecord { svg_path: svg_path.clone() });
+    state
+        .full_results
+        .lock()
+        .expect("full_results mutex poisoned")
+        .insert(result_id, record);
+
+    Ok(FullResult {
+        result_id,
+        svg_path: svg_path.to_string_lossy().into_owned(),
+        metrics,
+    })
+}
+
+/// Copy the exact rendered bytes to the user-chosen path — never re-convert,
+/// so the exported file is byte-identical to what was inspected.
+#[tauri::command]
+pub fn export_result(
+    result_id: u64,
+    out_path: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let record = {
+        let results = state.full_results.lock().expect("full_results mutex poisoned");
+        results.get(&result_id).cloned()
+    }
+    .ok_or("找不到渲染结果，请先重新渲染整图")?;
+    std::fs::copy(&record.svg_path, &out_path).map_err(|e| format!("导出失败：{e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn save_recipe(recipe: studio_core::Recipe, path: String) -> Result<(), String> {
+    recipe.config.validate().map_err(|e| e.to_string())?;
+    std::fs::write(&path, recipe.to_json()).map_err(|e| format!("无法写入配方：{e}"))
+}
+
+#[tauri::command]
+pub fn load_recipe(path: String) -> Result<studio_core::Recipe, String> {
+    let json = std::fs::read_to_string(&path).map_err(|e| format!("无法读取配方：{e}"))?;
+    studio_core::Recipe::from_json(&json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn save_session(session: studio_core::ExperimentSession, path: String) -> Result<(), String> {
+    std::fs::write(&path, session.to_json()).map_err(|e| format!("无法写入会话：{e}"))
+}
+
+#[tauri::command]
+pub fn load_session(path: String) -> Result<studio_core::ExperimentSession, String> {
+    let json = std::fs::read_to_string(&path).map_err(|e| format!("无法读取会话：{e}"))?;
+    studio_core::ExperimentSession::from_json(&json).map_err(|e| e.to_string())
+}

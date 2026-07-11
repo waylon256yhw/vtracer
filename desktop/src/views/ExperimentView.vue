@@ -1,25 +1,40 @@
 <script setup lang="ts">
-import { watch } from 'vue'
+import { ref, watch } from 'vue'
 import RoiSelector from '../components/RoiSelector.vue'
 import MatrixAxes from '../components/MatrixAxes.vue'
 import MatrixGrid from '../components/MatrixGrid.vue'
+import MetricsPanel from '../components/MetricsPanel.vue'
+import CandidateInspector from '../components/CandidateInspector.vue'
+import RecipeBar from '../components/RecipeBar.vue'
 import { useImageStore } from '../stores/image'
 import { useExperimentStore } from '../stores/experiment'
+import { useRecipeStore } from '../stores/recipe'
 
 const image = useImageStore()
 const exp = useExperimentStore()
+const recipe = useRecipeStore()
+
+/** Non-null while the inspector modal is open — only one live SVG at a time. */
+const inspectId = ref<string | null>(null)
 
 // Changing image or ROI invalidates every candidate on screen.
 watch(
   () => [image.info?.hash, image.roi?.x, image.roi?.y, image.roi?.w, image.roi?.h],
   (next, prev) => {
-    if (prev && next.some((v, i) => v !== prev[i])) exp.reset()
+    if (prev && next.some((v, i) => v !== prev[i])) {
+      inspectId.value = null
+      exp.reset()
+    }
   },
 )
 
 function onInspect(id: string) {
-  // M3: opens the candidate inspector (synced pan/zoom + A/B vs original).
-  console.log('inspect', id)
+  inspectId.value = id
+}
+
+function onAdopt(id: string) {
+  recipe.adopt(id)
+  inspectId.value = null
 }
 </script>
 
@@ -52,12 +67,25 @@ function onInspect(id: string) {
         <h3>参数矩阵</h3>
         <MatrixAxes />
 
+        <h3>配方与导出</h3>
+        <RecipeBar />
+
         <template v-if="Object.keys(exp.cells).length">
+          <h3>指标对比</h3>
+          <MetricsPanel @inspect="onInspect" />
           <h3>视图</h3>
           <button :disabled="exp.running" @click="exp.reset()">返回 ROI 选择</button>
         </template>
       </aside>
     </div>
+
+    <CandidateInspector
+      v-if="inspectId"
+      :candidate-id="inspectId"
+      @close="inspectId = null"
+      @adopt="onAdopt"
+      @navigate="(id) => (inspectId = id)"
+    />
   </div>
 </template>
 

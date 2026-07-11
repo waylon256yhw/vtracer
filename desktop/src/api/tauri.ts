@@ -1,6 +1,16 @@
 import { invoke, convertFileSrc, Channel } from '@tauri-apps/api/core'
-import { open } from '@tauri-apps/plugin-dialog'
-import type { ImageInfo, MatrixEvent, MatrixRequest, RunStarted, StudioApi } from './types'
+import { open, save } from '@tauri-apps/plugin-dialog'
+import type {
+  ExperimentSession,
+  FullResult,
+  ImageInfo,
+  MatrixEvent,
+  MatrixRequest,
+  Recipe,
+  RunStarted,
+  StudioApi,
+  StudioConfig,
+} from './types'
 
 export const tauriApi: StudioApi = {
   async pickImageFile() {
@@ -34,5 +44,46 @@ export const tauriApi: StudioApi = {
 
   async getCandidateSvg(runId: number, id: string) {
     return await invoke<string>('get_candidate_svg', { runId, id })
+  },
+
+  async renderFull(config: StudioConfig) {
+    return await invoke<FullResult>('render_full', { config })
+  },
+
+  async exportResult(resultId: number, outPath: string) {
+    await invoke('export_result', { resultId, outPath })
+  },
+
+  async saveRecipe(recipe: Recipe, path: string) {
+    await invoke('save_recipe', { recipe, path })
+  },
+
+  async loadRecipe(path: string) {
+    return await invoke<Recipe>('load_recipe', { path })
+  },
+
+  async saveSession(session: ExperimentSession, path: string) {
+    await invoke('save_session', { session, path })
+  },
+
+  async loadSession(path: string) {
+    return await invoke<ExperimentSession>('load_session', { path })
+  },
+
+  async pickSavePath(defaultName: string, extName: string, extensions: string[]) {
+    const picked = await save({
+      defaultPath: defaultName,
+      filters: [{ name: extName, extensions }],
+    })
+    return picked ?? null
+  },
+
+  async pickOpenPath(extName: string, extensions: string[]) {
+    const picked = await open({
+      multiple: false,
+      directory: false,
+      filters: [{ name: extName, extensions }],
+    })
+    return picked ?? null
   },
 }

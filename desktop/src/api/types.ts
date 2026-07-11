@@ -99,6 +99,50 @@ export interface RunStarted {
   roi_reference_path: string
 }
 
+export interface FullResult {
+  result_id: number
+  svg_path: string
+  metrics: Metrics
+}
+
+export interface Scaling {
+  filter_speckle_mode: 'fixed' | 'scaled'
+  reference_long_edge: number
+}
+
+/** Reusable conversion recipe — deliberately not tied to any image. */
+export interface Recipe {
+  version: number
+  app: string
+  created_at: string
+  config: StudioConfig
+  scaling: Scaling
+}
+
+export interface SourceInfo {
+  file: string
+  width: number
+  height: number
+  blake3: string
+}
+
+export interface Viewport {
+  scale: number
+  x: number
+  y: number
+}
+
+/** Experiment provenance: which image/ROI/axes/selection/viewport. */
+export interface ExperimentSession {
+  version: number
+  source: SourceInfo
+  base_config: StudioConfig
+  roi: Rect
+  axes: MatrixAxes
+  selected_candidate: string | null
+  viewport: Viewport | null
+}
+
 export interface StudioApi {
   /** Open the native file picker; null if the user cancelled. */
   pickImageFile(): Promise<string | null>
@@ -111,11 +155,43 @@ export interface StudioApi {
   cancelRun(runId: number): Promise<void>
   /** ROI SVG text of a completed candidate (inspector live view). */
   getCandidateSvg(runId: number, id: string): Promise<string>
+  /** Convert the FULL image (slow; indeterminate progress). */
+  renderFull(config: StudioConfig): Promise<FullResult>
+  /** Copy the exact rendered bytes of a FullResult to `outPath`. */
+  exportResult(resultId: number, outPath: string): Promise<void>
+  saveRecipe(recipe: Recipe, path: string): Promise<void>
+  loadRecipe(path: string): Promise<Recipe>
+  saveSession(session: ExperimentSession, path: string): Promise<void>
+  loadSession(path: string): Promise<ExperimentSession>
+  /** Native save dialog; null if cancelled. */
+  pickSavePath(defaultName: string, extName: string, extensions: string[]): Promise<string | null>
+  /** Native open dialog for a single file; null if cancelled. */
+  pickOpenPath(extName: string, extensions: string[]): Promise<string | null>
 }
 
 /** Deterministic candidate id — must match studio_core::CandidateParams. */
 export function candidateId(g: number, f: number, p: number): string {
   return `g${g}_f${f}_p${p}`
+}
+
+/** Inverse of candidateId. */
+export function parseCandidateId(id: string): CandidateParams | null {
+  const m = id.match(/^g(\d+)_f(\d+)_p(\d+)$/)
+  if (!m) return null
+  return { id, gradient_step: Number(m[1]), filter_speckle: Number(m[2]), color_precision: Number(m[3]) }
+}
+
+/** Mirror of studio_core::StudioConfig::from_preset. */
+export function presetConfig(preset: 'bw' | 'poster' | 'photo'): StudioConfig {
+  const base = defaultConfig()
+  switch (preset) {
+    case 'bw':
+      return { ...base, color_mode: 'binary' }
+    case 'poster':
+      return { ...base, color_precision: 8 }
+    case 'photo':
+      return { ...base, filter_speckle: 10, color_precision: 8, gradient_step: 48, corner_threshold: 180 }
+  }
 }
 
 /** Sorted + deduplicated copy of axis values (mirror of MatrixAxes::normalized). */

@@ -9,7 +9,13 @@ pub fn run() {
             commands::load_image,
             commands::run_matrix,
             commands::cancel_run,
-            commands::get_candidate_svg
+            commands::get_candidate_svg,
+            commands::render_full,
+            commands::export_result,
+            commands::save_recipe,
+            commands::load_recipe,
+            commands::save_session,
+            commands::load_session
         ])
         .run(tauri::generate_context!())
         .expect("error while running VTracer Studio");

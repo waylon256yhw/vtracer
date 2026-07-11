@@ -32,6 +32,15 @@ pub struct AppState {
     pub current_run: Mutex<Option<RunHandle>>,
     pub records: Records,
     pub run_index: RunIndex,
+    pub next_result_id: AtomicU64,
+    /// Full-resolution render outputs; export copies these exact bytes so
+    /// what the user inspected is byte-identical to what lands on disk.
+    pub full_results: Mutex<HashMap<u64, Arc<FullRecord>>>,
+}
+
+pub struct FullRecord {
+    /// Exact rendered bytes live at this path; export copies them verbatim.
+    pub svg_path: PathBuf,
 }
 
 impl AppState {
@@ -60,6 +69,10 @@ impl AppState {
         drop(current);
         self.records.lock().expect("records mutex poisoned").clear();
         self.run_index.lock().expect("run_index mutex poisoned").clear();
+        self.full_results
+            .lock()
+            .expect("full_results mutex poisoned")
+            .clear();
         *self.image.lock().expect("image mutex poisoned") = Some(image);
     }
 }

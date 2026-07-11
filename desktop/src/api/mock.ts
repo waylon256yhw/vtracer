@@ -1,9 +1,13 @@
 import type {
+  ExperimentSession,
+  FullResult,
   ImageInfo,
   MatrixEvent,
   MatrixRequest,
+  Recipe,
   RunStarted,
   StudioApi,
+  StudioConfig,
 } from './types'
 import { candidateId, normalizedAxes } from './types'
 
@@ -164,7 +168,61 @@ export const mockApi: StudioApi = {
     const p = m ? Number(m[3]) : 6
     return mockSceneSvg(Math.max(2, 10 - f), 2 ** Math.min(p, 3))
   },
+
+  async renderFull(config: StudioConfig): Promise<FullResult> {
+    await sleep(2500) // 模拟整图慢渲染
+    mockFullSvg = mockSceneSvg(Math.max(2, 12 - config.filter_speckle), 2 ** Math.min(config.color_precision, 3))
+    return {
+      result_id: ++mockResultId,
+      svg_path: 'mock://full.svg',
+      metrics: {
+        paths: 800 - config.filter_speckle * 10,
+        colors: Math.min(2 ** config.color_precision, 64),
+        svg_bytes: mockFullSvg.length * 40,
+        elapsed_ms: 2412,
+      },
+    }
+  },
+
+  async exportResult(resultId: number, outPath: string) {
+    console.log('[mock] export result', resultId, '->', outPath)
+  },
+
+  async saveRecipe(recipe: Recipe, path: string) {
+    mockFiles.set(path, JSON.stringify(recipe))
+  },
+
+  async loadRecipe(path: string) {
+    const json = mockFiles.get(path)
+    if (!json) throw new Error(`[mock] 找不到配方文件 ${path}`)
+    return JSON.parse(json) as Recipe
+  },
+
+  async saveSession(session: ExperimentSession, path: string) {
+    mockFiles.set(path, JSON.stringify(session))
+  },
+
+  async loadSession(path: string) {
+    const json = mockFiles.get(path)
+    if (!json) throw new Error(`[mock] 找不到会话文件 ${path}`)
+    return JSON.parse(json) as ExperimentSession
+  },
+
+  async pickSavePath(defaultName: string) {
+    return `C:\\mock\\${defaultName}`
+  },
+
+  async pickOpenPath(_extName: string, extensions: string[]) {
+    // Return the most recently saved mock file with a matching extension so
+    // save→load roundtrips are exercisable in the browser.
+    const paths = [...mockFiles.keys()].filter((p) => extensions.some((e) => p.endsWith(`.${e}`)))
+    return paths[paths.length - 1] ?? null
+  },
 }
+
+let mockResultId = 0
+let mockFullSvg = ''
+const mockFiles = new Map<string, string>()
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms))

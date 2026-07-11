@@ -125,6 +125,23 @@ pub fn run_matrix(job: MatrixJob, sink: Arc<dyn CandidateSink>, cancel: CancelTo
     }
 }
 
+/// Convert the FULL image synchronously (blocking; no progress callback —
+/// callers show an indeterminate progress UI). Clones the decoded RGBA once.
+/// Returns the SVG text plus its metrics.
+pub fn render_full(
+    image: &crate::LoadedImage,
+    config: &StudioConfig,
+) -> Result<(String, Metrics), String> {
+    config.validate().map_err(|e| e.to_string())?;
+    let input = image.to_color_image();
+    let start = Instant::now();
+    let svg = vtracer::convert(input, config.into())?;
+    let elapsed_ms = start.elapsed().as_millis() as u64;
+    let svg_text = svg.to_string();
+    let metrics = Metrics::from_svg(&svg, &svg_text, elapsed_ms);
+    Ok((svg_text, metrics))
+}
+
 fn compute(
     roi: &ColorImage,
     base: &StudioConfig,
@@ -215,6 +232,15 @@ mod tests {
         }
         .normalized()
         .unwrap()
+    }
+
+    #[test]
+    fn render_full_returns_svg_and_metrics() {
+        let img = LoadedImage::from_rgba(crate::image_io::test_image(64, 48));
+        let (svg_text, metrics) = render_full(&img, &StudioConfig::default()).unwrap();
+        assert!(svg_text.contains("<path"));
+        assert!(metrics.paths > 0);
+        assert_eq!(metrics.svg_bytes, svg_text.len());
     }
 
     #[test]

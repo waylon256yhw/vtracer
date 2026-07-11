@@ -19,6 +19,10 @@ export const useImageStore = defineStore('image', {
     async openAndLoad() {
       const path = await api.pickImageFile()
       if (!path) return
+      await this.loadPath(path)
+    },
+
+    async loadPath(path: string) {
       this.loading = true
       this.error = null
       try {
