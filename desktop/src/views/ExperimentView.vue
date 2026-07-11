@@ -1,8 +1,26 @@
 <script setup lang="ts">
+import { watch } from 'vue'
 import RoiSelector from '../components/RoiSelector.vue'
+import MatrixAxes from '../components/MatrixAxes.vue'
+import MatrixGrid from '../components/MatrixGrid.vue'
 import { useImageStore } from '../stores/image'
+import { useExperimentStore } from '../stores/experiment'
 
 const image = useImageStore()
+const exp = useExperimentStore()
+
+// Changing image or ROI invalidates every candidate on screen.
+watch(
+  () => [image.info?.hash, image.roi?.x, image.roi?.y, image.roi?.w, image.roi?.h],
+  (next, prev) => {
+    if (prev && next.some((v, i) => v !== prev[i])) exp.reset()
+  },
+)
+
+function onInspect(id: string) {
+  // M3: opens the candidate inspector (synced pan/zoom + A/B vs original).
+  console.log('inspect', id)
+}
 </script>
 
 <template>
@@ -13,7 +31,12 @@ const image = useImageStore()
     </div>
     <div v-else class="workspace">
       <section class="canvas">
-        <RoiSelector />
+        <div v-if="Object.keys(exp.cells).length" class="grid-area">
+          <MatrixGrid @inspect="onInspect" />
+        </div>
+        <div v-else class="roi-area">
+          <RoiSelector />
+        </div>
       </section>
       <aside class="sidebar">
         <h3>选区 (ROI)</h3>
@@ -22,11 +45,17 @@ const image = useImageStore()
             x={{ image.roi.x }} y={{ image.roi.y }}<br />
             {{ image.roi.w }}×{{ image.roi.h }} px（原图坐标）
           </p>
-          <button @click="image.setRoi(null)">清除选区</button>
+          <button :disabled="exp.running" @click="image.setRoi(null)">清除选区</button>
         </template>
         <p v-else class="hint">在左侧预览图上拖拽框选</p>
+
         <h3>参数矩阵</h3>
-        <p class="hint">M2 里程碑功能：选择 gradient_step × filter_speckle × color_precision 的候选值，先跑稀疏 9 组</p>
+        <MatrixAxes />
+
+        <template v-if="Object.keys(exp.cells).length">
+          <h3>视图</h3>
+          <button :disabled="exp.running" @click="exp.reset()">返回 ROI 选择</button>
+        </template>
       </aside>
     </div>
   </div>
@@ -61,8 +90,14 @@ const image = useImageStore()
   overflow: hidden;
 }
 
+.grid-area {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+}
+
 .sidebar {
-  width: 280px;
+  width: 320px;
   border-left: 1px solid var(--border);
   background: var(--bg-panel);
   padding: 14px;
@@ -70,7 +105,7 @@ const image = useImageStore()
 }
 
 .sidebar h3 {
-  margin: 12px 0 6px;
+  margin: 14px 0 6px;
   font-size: 13px;
   color: var(--text-dim);
   text-transform: uppercase;
