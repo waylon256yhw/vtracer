@@ -19,6 +19,8 @@ export interface CandidateCell {
   metrics: Metrics | null
   thumbUrl: string | null
   message: string | null
+  /** Exact config the result was computed with (null until done). */
+  config: StudioConfig | null
 }
 
 export const useExperimentStore = defineStore('experiment', {
@@ -73,26 +75,41 @@ export const useExperimentStore = defineStore('experiment', {
       this.cancelled = false
       this.lastMode = mode
       this.completed = 0
-      // Full run keeps existing cells (cache hits will refresh them); a
-      // sparse run over possibly-changed axes starts clean.
-      if (mode === 'sparse') this.cells = {}
+
+      // Events (cache-hit replays, even Finished for all-hit runs) can arrive
+      // on the channel BEFORE the invoke promise resolves — buffer them until
+      // the grid placeholders exist, so nothing is lost or overwritten.
+      let ready = false
+      const buffered: MatrixEvent[] = []
 
       try {
         const started = await api.runMatrix(
           { roi: image.roi, base: { ...this.base }, axes: this.norm, mode },
           (e) => {
-            if (this.generation === gen) this.onEvent(e)
+            if (this.generation !== gen) return // stale run
+            if (ready) this.onEvent(e)
+            else buffered.push(e)
           },
         )
         if (this.generation !== gen) return // superseded while awaiting
         this.runId = started.run_id
         this.total = started.total
         this.roiReferenceUrl = api.assetUrl(started.roi_reference_path)
+        // Rebuild cells strictly from this run's order: keeps completed cells
+        // (same base is guaranteed — base changes reset the experiment) and
+        // drops cells from pruned axis values so they can't be inspected
+        // against a run that no longer contains them.
+        const next: Record<string, CandidateCell> = {}
         for (const id of started.order) {
-          if (!this.cells[id] || this.cells[id].status === 'error') {
-            this.cells[id] = { id, status: 'pending', cached: false, metrics: null, thumbUrl: null, message: null }
-          }
+          const old = this.cells[id]
+          next[id] =
+            old && old.status === 'done'
+              ? old
+              : { id, status: 'pending', cached: false, metrics: null, thumbUrl: null, message: null, config: null }
         }
+        this.cells = next
+        ready = true
+        for (const e of buffered) this.onEvent(e)
       } catch (e) {
         if (this.generation === gen) {
           this.error = String(e)
@@ -111,6 +128,7 @@ export const useExperimentStore = defineStore('experiment', {
             metrics: e.metrics,
             thumbUrl: api.assetUrl(e.thumb_path),
             message: null,
+            config: e.config,
           }
           this.completed++
           break
@@ -122,6 +140,7 @@ export const useExperimentStore = defineStore('experiment', {
             metrics: null,
             thumbUrl: null,
             message: e.message,
+            config: null,
           }
           this.completed++
           break

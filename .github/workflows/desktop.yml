@@ -8,6 +8,8 @@ on:
     paths:
       - 'desktop/**'
       - 'studio-core/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
       - '.github/workflows/desktop.yml'
   workflow_dispatch:
 

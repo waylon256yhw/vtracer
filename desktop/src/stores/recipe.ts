@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { nextTick } from 'vue'
 import {
   api,
   parseCandidateId,
@@ -26,34 +27,54 @@ export const useRecipeStore = defineStore('recipe', {
     busy: null as string | null,
     error: null as string | null,
     notice: null as string | null,
+    /** True while loadSession applies state — invalidation watchers must not
+     * wipe the restored viewport/experiment mid-restore. */
+    restoring: false,
   }),
 
   actions: {
-    /** Take a candidate's params on top of the current base config. */
+    /** Adopt the EXACT config the candidate was computed with. Falls back to
+     * base-overlay only when no cell exists (e.g. session restore). */
     adopt(candidateId: string) {
       const exp = useExperimentStore()
-      const params = parseCandidateId(candidateId)
-      if (!params) return
-      this.adoptedId = candidateId
-      this.adopted = {
-        ...exp.base,
-        gradient_step: params.gradient_step,
-        filter_speckle: params.filter_speckle,
-        color_precision: params.color_precision,
+      const cell = exp.cells[candidateId]
+      if (cell?.config) {
+        this.adopted = { ...cell.config }
+      } else {
+        const params = parseCandidateId(candidateId)
+        if (!params) return
+        this.adopted = {
+          ...exp.base,
+          gradient_step: params.gradient_step,
+          filter_speckle: params.filter_speckle,
+          color_precision: params.color_precision,
+        }
       }
+      this.adoptedId = candidateId
       this.fullResult = null // 参数变了，旧渲染不再代表当前选择
       this.error = null
       this.notice = null
     },
 
+    /** Image changed → any full render belongs to the old image. */
+    invalidateRender() {
+      this.fullResult = null
+    },
+
     async renderFull() {
       if (!this.adopted || this.rendering) return
+      const startedHash = useImageStore().info?.hash ?? null
       this.rendering = true
       this.renderSeconds = 0
       this.error = null
       const timer = setInterval(() => this.renderSeconds++, 1000)
       try {
-        this.fullResult = await api.renderFull({ ...this.adopted })
+        const result = await api.renderFull({ ...this.adopted })
+        // The backend also refuses stale renders; this guard drops a stale
+        // resolved promise if the image changed mid-render.
+        if (useImageStore().info?.hash === startedHash) {
+          this.fullResult = result
+        }
       } catch (e) {
         this.error = String(e)
       } finally {
@@ -150,6 +171,7 @@ export const useRecipeStore = defineStore('recipe', {
     async loadSession() {
       const path = await api.pickOpenPath('实验会话', ['json'])
       if (!path) return
+      this.restoring = true
       try {
         const session = await api.loadSession(path)
         const image = useImageStore()
@@ -179,6 +201,10 @@ export const useRecipeStore = defineStore('recipe', {
         }
       } catch (e) {
         this.error = String(e)
+      } finally {
+        // Watchers flush on the next tick — keep the guard up until then.
+        await nextTick()
+        this.restoring = false
       }
     },
   },

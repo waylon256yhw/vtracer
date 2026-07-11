@@ -37,16 +37,23 @@ const doneIds = computed(() => {
   return ids
 })
 
+/** Monotonic token — a slow earlier response must not overwrite a newer one
+ * (rapid ←/→ navigation would otherwise show candidate A's SVG under B's
+ * title, and Adopt would take the wrong one). */
+let loadSeq = 0
+
 watch(
   () => props.candidateId,
   async (id) => {
+    const seq = ++loadSeq
     svgText.value = null
     svgError.value = null
     if (exp.runId === null) return
     try {
-      svgText.value = await api.getCandidateSvg(exp.runId, id)
+      const text = await api.getCandidateSvg(exp.runId, id)
+      if (seq === loadSeq && props.candidateId === id) svgText.value = text
     } catch (e) {
-      svgError.value = String(e)
+      if (seq === loadSeq && props.candidateId === id) svgError.value = String(e)
     }
   },
   { immediate: true },
@@ -88,6 +95,30 @@ onUnmounted(() => {
 
 // --- pan/zoom -------------------------------------------------------------
 
+const paneEl = ref<HTMLElement | null>(null)
+/** Natural pixel size of the ROI reference (== SVG size). */
+const content = ref({ w: 0, h: 0 })
+
+function onRefLoad(e: Event) {
+  const img = e.target as HTMLImageElement
+  content.value = { w: img.naturalWidth, h: img.naturalHeight }
+  // First open (or after image/ROI change reset the viewport): fit to pane.
+  // A restored session viewport is non-default and is left untouched.
+  if (viewport.isDefault) fit()
+}
+
+function fit() {
+  const pane = paneEl.value
+  if (!pane) return
+  viewport.fitTo(pane.clientWidth, pane.clientHeight, content.value.w, content.value.h)
+}
+
+function oneToOne() {
+  const pane = paneEl.value
+  if (!pane) return
+  viewport.oneToOne(pane.clientWidth, pane.clientHeight, content.value.w, content.value.h)
+}
+
 const dragging = ref(false)
 let lastX = 0
 let lastY = 0
@@ -127,13 +158,15 @@ function onPointerUp() {
           {{ (cell.metrics.svg_bytes / 1024).toFixed(1) }} KB · {{ cell.metrics.elapsed_ms }} ms
         </span>
         <span class="keys">←/→ 切换候选 · 按住空格看原图 · 滚轮缩放 · 拖拽平移 · Esc 关闭</span>
-        <button @click="viewport.reset()">重置视图</button>
+        <button @click="fit()">适配窗口</button>
+        <button @click="oneToOne()">1:1</button>
         <button class="primary" @click="emit('adopt', candidateId)">采用此参数</button>
         <button @click="emit('close')">关闭</button>
       </header>
 
       <div class="panes">
         <div
+          ref="paneEl"
           class="pane"
           @wheel="onWheel"
           @pointerdown="onPointerDown"
@@ -142,7 +175,13 @@ function onPointerUp() {
         >
           <div class="pane-label">原图（全分辨率 ROI）</div>
           <div class="layer" :style="{ transform: viewport.cssTransform }">
-            <img :src="exp.roiReferenceUrl ?? ''" alt="原图 ROI" draggable="false" />
+            <img
+              :src="exp.roiReferenceUrl ?? ''"
+              :class="{ pixelated: viewport.scale >= 3 }"
+              alt="原图 ROI"
+              draggable="false"
+              @load="onRefLoad"
+            />
           </div>
         </div>
 
@@ -158,6 +197,7 @@ function onPointerUp() {
             <img
               v-show="abOriginal"
               :src="exp.roiReferenceUrl ?? ''"
+              :class="{ pixelated: viewport.scale >= 3 }"
               alt="原图 ROI"
               draggable="false"
             />
@@ -265,8 +305,13 @@ function onPointerUp() {
 }
 
 .layer img {
-  image-rendering: pixelated;
   display: block;
+}
+
+/* Only snap to pixels when zoomed in far enough to inspect them — an
+   antialiased overview compares more fairly against the vector side. */
+.layer img.pixelated {
+  image-rendering: pixelated;
 }
 
 .svg-host :deep(svg) {

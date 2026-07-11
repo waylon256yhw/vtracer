@@ -9,23 +9,45 @@ import RecipeBar from '../components/RecipeBar.vue'
 import { useImageStore } from '../stores/image'
 import { useExperimentStore } from '../stores/experiment'
 import { useRecipeStore } from '../stores/recipe'
+import { useViewportStore } from '../stores/viewport'
 
 const image = useImageStore()
 const exp = useExperimentStore()
 const recipe = useRecipeStore()
+const viewport = useViewportStore()
 
 /** Non-null while the inspector modal is open — only one live SVG at a time. */
 const inspectId = ref<string | null>(null)
 
-// Changing image or ROI invalidates every candidate on screen.
+// Changing image or ROI invalidates every candidate on screen, the viewport,
+// and any full-image render (it belongs to the old image/ROI).
 watch(
   () => [image.info?.hash, image.roi?.x, image.roi?.y, image.roi?.w, image.roi?.h],
   (next, prev) => {
+    if (recipe.restoring) return
     if (prev && next.some((v, i) => v !== prev[i])) {
       inspectId.value = null
       exp.reset()
+      viewport.reset()
+      recipe.invalidateRender()
     }
   },
+)
+
+// Changing any non-axis base parameter (including via presets or loadRecipe)
+// makes existing results stale — they were computed with the old base and
+// must not be inspected/adopted as if they matched the current one.
+watch(
+  () => exp.base,
+  () => {
+    if (recipe.restoring) return
+    if (Object.keys(exp.cells).length) {
+      inspectId.value = null
+      exp.reset()
+      viewport.reset()
+    }
+  },
+  { deep: true },
 )
 
 function onInspect(id: string) {

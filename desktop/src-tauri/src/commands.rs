@@ -89,6 +89,10 @@ pub enum MatrixEvent {
         run_id: u64,
         id: String,
         params: CandidateParams,
+        /// The EXACT full config this result was computed with. The frontend
+        /// must adopt/export from this, never by overlaying the axis params
+        /// onto whatever the base config is at click time.
+        config: StudioConfig,
         metrics: Metrics,
         thumb_path: String,
         /// True when served from cache (a previous run already computed it).
@@ -167,6 +171,7 @@ pub async fn run_matrix(
             run_id,
             id: candidate.id,
             params: candidate_params_of(&record),
+            config: record.config.clone(),
             metrics: record.metrics.clone(),
             thumb_path: record.thumb_path.to_string_lossy().into_owned(),
             cached: true,
@@ -268,7 +273,7 @@ impl CandidateSink for ChannelSink {
         self.records
             .lock()
             .expect("records mutex poisoned")
-            .insert(key.as_str().to_owned(), record);
+            .insert(key.as_str().to_owned(), record.clone());
         self.run_index
             .lock()
             .expect("run_index mutex poisoned")
@@ -277,6 +282,7 @@ impl CandidateSink for ChannelSink {
             run_id: self.run_id,
             id: result.params.id.clone(),
             params: result.params,
+            config: record.config.clone(),
             metrics: result.metrics,
             thumb_path: thumb_path.to_string_lossy().into_owned(),
             cached: false,
@@ -342,6 +348,7 @@ pub async fn render_full(
 
     let dir = cache_dir(&app)?;
     let result_id = state.next_result_id.fetch_add(1, Ordering::SeqCst) + 1;
+    let rendered_hash = image.hash.clone();
     let render_config = config.clone();
     let (svg_text, metrics) = tauri::async_runtime::spawn_blocking(move || {
         studio_core::render_full(&image, &render_config)
@@ -349,10 +356,22 @@ pub async fn render_full(
     .await
     .map_err(|e| format!("后台任务失败：{e}"))??;
 
+    // The image may have been replaced while this long render was running —
+    // a stale result must never enter (or be exported from) the new state.
+    let still_current = state
+        .image_handle()
+        .is_some_and(|current| current.hash == rendered_hash);
+    if !still_current {
+        return Err("渲染期间图片已更换，本次结果已丢弃，请重新渲染".into());
+    }
+
     let svg_path = dir.join(format!("full-{result_id}.svg"));
     std::fs::write(&svg_path, &svg_text).map_err(|e| format!("无法写入 SVG：{e}"))?;
 
-    let record = Arc::new(crate::state::FullRecord { svg_path: svg_path.clone() });
+    let record = Arc::new(crate::state::FullRecord {
+        svg_path: svg_path.clone(),
+        image_hash: rendered_hash,
+    });
     state
         .full_results
         .lock()
@@ -379,6 +398,10 @@ pub fn export_result(
         results.get(&result_id).cloned()
     }
     .ok_or("找不到渲染结果，请先重新渲染整图")?;
+    let current = state.image_handle().ok_or("请先打开图片")?;
+    if current.hash != record.image_hash {
+        return Err("该渲染结果属于之前的图片，请重新渲染后再导出".into());
+    }
     std::fs::copy(&record.svg_path, &out_path).map_err(|e| format!("导出失败：{e}"))?;
     Ok(())
 }

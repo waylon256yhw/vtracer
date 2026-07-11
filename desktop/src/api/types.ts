@@ -83,6 +83,8 @@ export type MatrixEvent =
       run_id: number
       id: string
       params: CandidateParams
+      /** The EXACT full config this result was computed with — adopt from this. */
+      config: StudioConfig
       metrics: Metrics
       thumb_path: string
       cached: boolean

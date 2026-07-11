@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useImageStore } from '../stores/image'
 import type { Rect } from '../api'
 
@@ -12,6 +12,26 @@ import type { Rect } from '../api'
 const image = useImageStore()
 
 const imgEl = ref<HTMLImageElement | null>(null)
+/** Rendered size of the preview <img>, kept reactive via @load +
+ * ResizeObserver — window resizes must move the committed-ROI overlay. */
+const rendered = ref({ w: 0, h: 0 })
+let resizeObserver: ResizeObserver | null = null
+
+function updateRendered() {
+  const el = imgEl.value
+  rendered.value = { w: el?.clientWidth ?? 0, h: el?.clientHeight ?? 0 }
+}
+
+onMounted(() => {
+  resizeObserver = new ResizeObserver(updateRendered)
+  if (imgEl.value) resizeObserver.observe(imgEl.value)
+  updateRendered()
+})
+
+onUnmounted(() => {
+  resizeObserver?.disconnect()
+})
+
 const drag = reactive({
   active: false,
   startX: 0,
@@ -87,20 +107,19 @@ const displayRect = computed(() => {
       height: Math.abs(drag.curY - drag.startY),
     }
   }
-  const el = imgEl.value
   const info = image.info
   const roi = image.roi
-  if (!el || !info || !roi) return null
-  const box = el.getBoundingClientRect()
-  const sx = box.width / info.width
-  const sy = box.height / info.height
+  const { w, h } = rendered.value
+  if (!info || !roi || !w || !h) return null
+  const sx = w / info.width
+  const sy = h / info.height
   return { left: roi.x * sx, top: roi.y * sy, width: roi.w * sx, height: roi.h * sy }
 })
 </script>
 
 <template>
   <div class="roi-wrap" @mousedown.prevent="onDown">
-    <img ref="imgEl" :src="image.previewUrl ?? ''" alt="预览" draggable="false" />
+    <img ref="imgEl" :src="image.previewUrl ?? ''" alt="预览" draggable="false" @load="updateRendered" />
     <div
       v-if="displayRect"
       class="roi-box"

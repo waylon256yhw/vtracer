@@ -55,7 +55,12 @@ const axisDefs = [
         先跑稀疏组（≤9）
       </button>
       <button
-        :disabled="exp.running || !image.roi || !exp.sparseDone"
+        :disabled="
+          exp.running ||
+          !image.roi ||
+          exp.totalCombinations === 0 ||
+          (!exp.sparseDone && !Object.keys(exp.cells).length)
+        "
         @click="exp.start('full')"
       >
         补齐完整矩阵

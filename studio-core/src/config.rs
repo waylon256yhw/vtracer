@@ -110,6 +110,20 @@ impl StudioConfig {
                 self.splice_threshold
             )));
         }
+        // visioncortex asserts max_iterations > 0 — a zero from a hand-edited
+        // recipe would panic inside the converter.
+        if self.max_iterations == 0 {
+            return Err(StudioError::InvalidParam(
+                "最大迭代次数 max_iterations 至少为 1".into(),
+            ));
+        }
+        if let Some(p) = self.path_precision {
+            if p > 8 {
+                return Err(StudioError::InvalidParam(format!(
+                    "路径小数位 path_precision 必须在 [0,8] 内，当前 {p}"
+                )));
+            }
+        }
         Ok(())
     }
 
@@ -216,5 +230,11 @@ mod tests {
         c = StudioConfig::default();
         c.gradient_step = 0;
         assert!(c.validate().is_ok(), "0 合法（diagonal 模式）");
+        c = StudioConfig::default();
+        c.max_iterations = 0;
+        assert!(c.validate().is_err(), "0 迭代会让 visioncortex panic");
+        c = StudioConfig::default();
+        c.path_precision = Some(9);
+        assert!(c.validate().is_err());
     }
 }

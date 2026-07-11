@@ -66,6 +66,7 @@ export const mockApi: StudioApi = {
   assetUrl(path: string) {
     if (path.startsWith('data:')) return path
     if (path.includes('roi-ref')) return dataUrl(mockSceneSvg(11, 8))
+    if (path.includes('full')) return dataUrl(mockFullSvg || mockSceneSvg(8, 8))
     return mockPreviewDataUrl()
   },
 
@@ -135,6 +136,7 @@ export const mockApi: StudioApi = {
             run_id: runId,
             id: c.id,
             params: { id: c.id, gradient_step: c.g, filter_speckle: c.f, color_precision: c.p },
+            config: { ...req.base, gradient_step: c.g, filter_speckle: c.f, color_precision: c.p },
             metrics: {
               paths: 40 + c.p * 60 - c.f * 3 + Math.round(600 / (c.g + 1)),
               colors: Math.min(2 ** c.p, 64),

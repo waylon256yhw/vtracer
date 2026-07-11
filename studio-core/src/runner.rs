@@ -42,9 +42,10 @@ pub struct MatrixJob {
     pub thumb_max_edge: u32,
 }
 
-/// Process-wide bounded worker pool. A single pool serves every run, so an
-/// auto-cancelled old run and its replacement can never oversubscribe the
-/// CPU together.
+/// Process-wide bounded worker pool (bounded CONCURRENCY — the queue itself
+/// is unbounded but never holds more than one matrix's candidates). A single
+/// pool serves every run, so an auto-cancelled old run and its replacement
+/// can never oversubscribe the CPU together.
 pub fn worker_count() -> usize {
     std::thread::available_parallelism()
         .map(|n| n.get())
@@ -103,14 +104,23 @@ pub fn run_matrix(job: MatrixJob, sink: Arc<dyn CandidateSink>, cancel: CancelTo
         pool()
             .send(Box::new(move || {
                 if !cancel.load(Ordering::SeqCst) {
-                    match compute(&roi, &base, &params, thumb_max_edge) {
-                        Ok(result) => {
+                    // A converter panic must not kill the worker or swallow the
+                    // Finished event — downgrade it to a CandidateError.
+                    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        compute(&roi, &base, &params, thumb_max_edge)
+                    }));
+                    match outcome {
+                        Ok(Ok(result)) => {
                             state.completed.fetch_add(1, Ordering::SeqCst);
                             sink.candidate_done(result);
                         }
-                        Err(message) => {
+                        Ok(Err(message)) => {
                             state.completed.fetch_add(1, Ordering::SeqCst);
                             sink.candidate_error(&params.id, &message);
+                        }
+                        Err(_) => {
+                            state.completed.fetch_add(1, Ordering::SeqCst);
+                            sink.candidate_error(&params.id, "转换器内部错误（panic），已跳过该参数组合");
                         }
                     }
                 }

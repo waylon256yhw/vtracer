@@ -41,6 +41,9 @@ pub struct AppState {
 pub struct FullRecord {
     /// Exact rendered bytes live at this path; export copies them verbatim.
     pub svg_path: PathBuf,
+    /// Hash of the image this was rendered from — export re-verifies it
+    /// against the current image, closing the replace-during-render race.
+    pub image_hash: String,
 }
 
 impl AppState {

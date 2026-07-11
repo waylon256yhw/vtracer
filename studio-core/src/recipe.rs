@@ -118,6 +118,23 @@ impl ExperimentSession {
                 supported: SESSION_VERSION,
             });
         }
+        // A hand-edited session flows straight into runs — validate everything.
+        s.base_config.validate()?;
+        s.axes.normalized()?;
+        let roi_ok = s.roi.w > 0
+            && s.roi.h > 0
+            && s.roi.x.checked_add(s.roi.w).is_some_and(|r| r <= s.source.width)
+            && s.roi.y.checked_add(s.roi.h).is_some_and(|b| b <= s.source.height);
+        if !roi_ok {
+            return Err(StudioError::InvalidParam(
+                "会话中的 ROI 超出图片范围或为空".into(),
+            ));
+        }
+        if let Some(v) = &s.viewport {
+            if !v.scale.is_finite() || v.scale <= 0.0 || !v.x.is_finite() || !v.y.is_finite() {
+                return Err(StudioError::InvalidParam("会话中的视口数值无效".into()));
+            }
+        }
         Ok(s)
     }
 
@@ -184,5 +201,19 @@ mod tests {
         };
         let back = ExperimentSession::from_json(&s.to_json()).unwrap();
         assert_eq!(s, back);
+
+        // Hand-edited sessions with unusable content are rejected up front.
+        let mut bad = s.clone();
+        bad.roi = Rect { x: 3900, y: 0, w: 300, h: 300 };
+        assert!(ExperimentSession::from_json(&bad.to_json()).is_err(), "ROI 越界");
+        let mut bad = s.clone();
+        bad.base_config.max_iterations = 0;
+        assert!(ExperimentSession::from_json(&bad.to_json()).is_err(), "非法 config");
+        let mut bad = s.clone();
+        bad.axes.gradient_step = vec![999];
+        assert!(ExperimentSession::from_json(&bad.to_json()).is_err(), "非法轴取值");
+        let mut bad = s;
+        bad.viewport = Some(Viewport { scale: f64::NAN, x: 0.0, y: 0.0 });
+        assert!(ExperimentSession::from_json(&bad.to_json()).is_err(), "非法视口");
     }
 }

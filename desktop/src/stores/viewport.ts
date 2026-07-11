@@ -15,6 +15,8 @@ export const useViewportStore = defineStore('viewport', {
 
   getters: {
     cssTransform: (s) => `translate(${s.x}px, ${s.y}px) scale(${s.scale})`,
+    /** True until anyone fits/zooms/restores — the inspector auto-fits then. */
+    isDefault: (s) => s.scale === 1 && s.x === 0 && s.y === 0,
   },
 
   actions: {
@@ -31,6 +33,22 @@ export const useViewportStore = defineStore('viewport', {
     panBy(dx: number, dy: number) {
       this.x += dx
       this.y += dy
+    },
+
+    /** Center the content in the pane at the largest scale that fits (≤1). */
+    fitTo(paneW: number, paneH: number, contentW: number, contentH: number) {
+      if (!paneW || !paneH || !contentW || !contentH) return
+      const scale = Math.min(paneW / contentW, paneH / contentH, 1)
+      this.scale = scale
+      this.x = (paneW - contentW * scale) / 2
+      this.y = (paneH - contentH * scale) / 2
+    },
+
+    /** 100% pixel scale, centered. */
+    oneToOne(paneW: number, paneH: number, contentW: number, contentH: number) {
+      this.scale = 1
+      this.x = (paneW - contentW) / 2
+      this.y = (paneH - contentH) / 2
     },
 
     reset() {

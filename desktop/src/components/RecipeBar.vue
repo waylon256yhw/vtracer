@@ -1,14 +1,20 @@
 <script setup lang="ts">
-import { presetConfig } from '../api'
+import { computed, ref } from 'vue'
+import { api, presetConfig } from '../api'
 import { useExperimentStore } from '../stores/experiment'
 import { useRecipeStore } from '../stores/recipe'
 
 /**
  * Non-axis parameters + presets, the adopted-candidate workflow (full-res
- * render → export), and recipe/session file IO.
+ * render → preview → export), and recipe/session file IO.
  */
 const exp = useExperimentStore()
 const recipe = useRecipeStore()
+
+const showFullPreview = ref(false)
+const fullPreviewUrl = computed(() =>
+  recipe.fullResult ? api.assetUrl(recipe.fullResult.svg_path) : null,
+)
 
 const presets = [
   { key: 'bw', label: '黑白' },
@@ -61,6 +67,13 @@ const presets = [
       <input v-model.number="exp.base.splice_threshold" type="number" min="0" max="180" :disabled="exp.running" />
     </div>
 
+    <div class="row">
+      <span class="lbl" title="曲线拟合最大迭代次数（至少 1）">迭代</span>
+      <input v-model.number="exp.base.max_iterations" type="number" min="1" max="64" :disabled="exp.running" />
+      <span class="lbl" title="路径坐标小数位 [0,8]">小数位</span>
+      <input v-model.number="exp.base.path_precision" type="number" min="0" max="8" :disabled="exp.running" />
+    </div>
+
     <div class="adopted">
       <template v-if="recipe.adopted">
         <div class="adopted-title">
@@ -74,6 +87,7 @@ const presets = [
           <button class="primary" :disabled="recipe.rendering" @click="recipe.renderFull()">
             {{ recipe.rendering ? `整图渲染中… ${recipe.renderSeconds}s` : '整图渲染' }}
           </button>
+          <button :disabled="!recipe.fullResult" @click="showFullPreview = true">预览</button>
           <button :disabled="!recipe.fullResult" @click="recipe.exportSvg()">导出 SVG</button>
         </div>
         <div v-if="recipe.fullResult" class="full-metrics">
@@ -97,6 +111,19 @@ const presets = [
 
     <div v-if="recipe.notice" class="notice">{{ recipe.notice }}</div>
     <div v-if="recipe.error" class="error">{{ recipe.error }}</div>
+
+    <!-- 整图结果预览：导出前先确认整图效果 -->
+    <div v-if="showFullPreview && fullPreviewUrl" class="full-overlay" @click.self="showFullPreview = false">
+      <div class="full-box">
+        <header class="full-bar">
+          <span>整图渲染结果预览</span>
+          <button @click="showFullPreview = false">关闭</button>
+        </header>
+        <div class="full-body">
+          <img :src="fullPreviewUrl" alt="整图渲染结果" />
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -171,5 +198,49 @@ input[type='number'] {
   font-size: 12px;
   color: var(--danger);
   word-break: break-all;
+}
+
+.full-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 120;
+}
+
+.full-box {
+  width: 90vw;
+  height: 88vh;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.full-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.full-body {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.full-body img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
 }
 </style>
